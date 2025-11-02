@@ -1,179 +1,165 @@
-# Backend Structure Document
+# Backend Structure Document - Padi Diagnosis Expert System
 
-This document outlines the backend architecture, hosting, and infrastructure for the **codeguide-starter** project. It uses plain language so anyone can understand how the backend is set up and how it supports the application.
+This document describes the backend setup for the Padi Diagnosis Expert System—an application that diagnoses rice plant diseases using hybrid Forward Chaining and Certainty Factor techniques, augmented with AI-driven treatment recommendations. It is written in everyday language so anyone can understand how the backend is organized, hosted, and maintained.
 
 ## 1. Backend Architecture
 
-- **Framework and Design Pattern**
-  - We use **Next.js API Routes** to handle all server-side logic. These routes live alongside the frontend code in the same repository, making development and deployment simpler.
-  - The backend follows a **layered pattern**:
-    1. **API Layer**: Receives requests (login, registration, data fetch).  
-    2. **Service Layer**: Contains the core business logic (user validation, password hashing).  
-    3. **Data Access Layer**: Talks to the database via a simple ORM (e.g., Prisma or TypeORM).
+### Overall Design
+- **Framework**: A standalone Flask application structured with Blueprints to separate concerns (authentication, diagnosis, history, AI integration).
+- **Pattern**: Layered (or “clean”) architecture:
+  - **Routes** (entry points)
+  - **Services** (business logic for Forward Chaining and Certainty Factor calculations)
+  - **Models** (ORM definitions with SQLAlchemy)
+  - **Utilities** (OpenAI client, PDF generator, helper functions)
+- **Server**: Gunicorn as the WSGI server, with Nginx in front as a reverse proxy and SSL terminator.
+- **Containers**: Each component (Flask API, PostgreSQL, Redis) runs in its own Docker container for isolation and portability.
 
-- **Scalability**
-  - Stateless API routes can scale horizontally—new instances can spin up on demand.  
-  - We can add caching or a message queue (e.g., Redis or RabbitMQ) without changing the core code.
-
-- **Maintainability**
-  - Code for each feature is grouped by route (authentication, dashboard).  
-  - A service layer separates complex logic from request handling.
-
-- **Performance**
-  - Lightweight Node.js handlers keep response times low.  
-  - Future use of database connection pooling and Redis for caching repeated queries.
+### Scalability, Maintainability, Performance
+- **Horizontal Scaling**: Multiple identical Flask containers behind a load balancer allow handling increased traffic.
+- **Connection Pooling**: SQLAlchemy’s connection pool reuses database connections, reducing overhead.
+- **Auto-Reload & Hot-Deploy**: In development, Docker Compose auto-rebuilds on code changes; in production, CI/CD pipelines handle rolling updates.
+- **Modularity**: Clean separation of routes, logic, and data models makes it easy to add new features (e.g., additional disease rules) without touching unrelated code.
 
 ## 2. Database Management
 
-- **Database Choice**
-  - We recommend **PostgreSQL** for structured data and reliable transactions.  
-  - In-memory caching can be added later with **Redis** for session tokens or frequently read data.
+### Technologies Used
+- **Type**: Relational (SQL)
+- **System**: PostgreSQL (hosted via AWS RDS or similar managed service)
+- **ORM**: SQLAlchemy for Python to map tables to classes.
+- **Migrations**: Alembic for versioning schema changes.
 
-- **Data Storage and Access**
-  - Use an ORM like **Prisma** or **TypeORM** to map JavaScript/TypeScript objects to database tables.
-  - Connection pooling ensures efficient use of database connections under load.
-  - Migrations track schema changes over time, keeping development, staging, and production in sync.
-
-- **Data Practices**
-  - Passwords are never stored in plain text—they are salted and hashed with **bcrypt** before saving.
-  - All outgoing data is typed and validated to prevent malformed records.
+### Data Flow and Practices
+- **Structure**: Normalized tables with primary/foreign keys. JSONB columns for flexible data, like storing selected symptom lists and AI-generated recommendations.
+- **Access**: Data access happens through SQLAlchemy sessions, ensuring thread-safe transactions and automatic rollback on errors.
+- **Backups & Snapshots**: Daily automated database snapshots. Point-in-time recovery configured for up to 7 days.
+- **Retention Policy**: Diagnosis history older than 30 days is either archived or pruned to save storage.
 
 ## 3. Database Schema
 
-### Human-Readable Format
-
-- **Users**
-  - **id**: Unique identifier  
-  - **email**: User’s email address (unique)  
-  - **password_hash**: Securely hashed password  
-  - **created_at**: Account creation timestamp
-
-- **Sessions**
-  - **id**: Unique session record  
-  - **user_id**: Links to a user  
-  - **token**: Random string for authentication  
-  - **expires_at**: When the token stops working  
-  - **created_at**: When the session was created
-
-- **DashboardItems** *(optional for dynamic data)*
-  - **id**: Unique record  
-  - **title**: Item title  
-  - **content**: Item details  
-  - **created_at**: When the item was added
+### Human-Readable Overview
+- **Users**: Tracks user accounts and Google OAuth details.
+- **Symptoms**: Lists all possible rice plant symptoms.
+- **Diseases**: Lists known diseases and their descriptions.
+- **Rules**: Defines which symptoms map directly to a disease (Forward Chaining).
+- **Symptom–Disease Factors**: Stores the MB (measure of belief) and MD (measure of disbelief) for each symptom–disease pair.
+- **Diagnosis History**: Records each diagnosis event, including selected symptoms, certainty factors, final CF score, and AI-generated treatment recommendations.
 
 ### SQL Schema (PostgreSQL)
 ```sql
--- Users table
 CREATE TABLE users (
   id SERIAL PRIMARY KEY,
-  email VARCHAR(255) UNIQUE NOT NULL,
-  password_hash VARCHAR(255) NOT NULL,
-  created_at TIMESTAMPTZ DEFAULT now()
+  email VARCHAR(255) NOT NULL UNIQUE,
+  full_name VARCHAR(255),
+  google_id VARCHAR(255) UNIQUE,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Sessions table
-CREATE TABLE sessions (
+CREATE TABLE symptoms (
   id SERIAL PRIMARY KEY,
-  user_id INT REFERENCES users(id) ON DELETE CASCADE,
-  token VARCHAR(255) UNIQUE NOT NULL,
-  expires_at TIMESTAMPTZ NOT NULL,
-  created_at TIMESTAMPTZ DEFAULT now()
+  name VARCHAR(255) NOT NULL,
+  description TEXT
 );
 
--- Dashboard items table
-CREATE TABLE dashboard_items (
+CREATE TABLE diseases (
   id SERIAL PRIMARY KEY,
-  title TEXT NOT NULL,
-  content TEXT,
-  created_at TIMESTAMPTZ DEFAULT now()
+  name VARCHAR(255) NOT NULL,
+  description TEXT
 );
-```  
+
+CREATE TABLE rules (
+  id SERIAL PRIMARY KEY,
+  disease_id INTEGER NOT NULL REFERENCES diseases(id) ON DELETE CASCADE,
+  symptom_id INTEGER NOT NULL REFERENCES symptoms(id) ON DELETE CASCADE
+);
+
+CREATE TABLE symptom_disease_cf (
+  id SERIAL PRIMARY KEY,
+  symptom_id INTEGER NOT NULL REFERENCES symptoms(id),
+  disease_id INTEGER NOT NULL REFERENCES diseases(id),
+  mb FLOAT NOT NULL,
+  md FLOAT NOT NULL,
+  UNIQUE (symptom_id, disease_id)
+);
+
+CREATE TABLE diagnosis_history (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  disease_id INTEGER REFERENCES diseases(id),
+  diagnosis_time TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  status VARCHAR(50) NOT NULL,
+  selected_symptoms JSONB NOT NULL,
+  certainty_factors JSONB,
+  final_cf_value FLOAT,
+  final_recommendations JSONB
+);
+``` 
 
 ## 4. API Design and Endpoints
 
-- **Approach**: We follow a **RESTful** style, grouping related endpoints under `/api` directories.
+### RESTful Approach
+- **Format**: JSON over HTTP, clear status codes, meaningful error messages.
+- **Versioning**: Prefix routes with `/api/v1/` for future changes.
 
-- **Key Endpoints**
-  - `POST /api/auth/register`  
-    • Accepts `{ email, password }`  
-    • Creates a new user and issues a session token  
-  - `POST /api/auth/login`  
-    • Accepts `{ email, password }`  
-    • Verifies credentials and returns a session token  
-  - `POST /api/auth/logout`  
-    • Invalidates the session token on the server  
-  - `GET /api/dashboard/data`  
-    • Requires a valid session  
-    • Returns user-specific data or dashboard items  
-
-- **Communication**
-  - Frontend sends JSON requests; backend replies with JSON and appropriate HTTP status codes.  
-  - Protected routes check for a valid session token (in cookies or Authorization header).
+### Key Endpoints
+- **Authentication**
+  - `POST /api/v1/auth/login/google` → start Google OAuth flow
+  - `POST /api/v1/auth/logout` → end session
+- **Symptoms**
+  - `GET /api/v1/symptoms` → fetch list of all symptoms
+- **Diagnosis**
+  - `POST /api/v1/diagnose` → submit selected symptom IDs; server performs Forward Chaining and responds with either a complete diagnosis or a request for certainty factors
+  - `POST /api/v1/calculate-certainty` → submit symptom IDs with user-supplied certainty values; server calculates final CF score and returns the result plus AI-generated treatment plan
+- **History**
+  - `GET /api/v1/history` → list the logged-in user’s last 30 days of diagnoses, paginated
+  - `GET /api/v1/history/admin` → (admin only) list all users’ history records
 
 ## 5. Hosting Solutions
 
-- **Cloud Provider**:  
-  - **Vercel** (recommended) offers seamless Next.js deployments, auto-scaling, and built-in CDN.  
-  - Alternatively, **Netlify** or any Node.js-capable host will work.
+### Development Environment
+- **Docker Compose**: Runs Flask, PostgreSQL, and Redis locally. One command to spin up the full stack.
 
-- **Benefits**
-  - **Reliability**: Global servers and failover across regions.  
-  - **Scalability**: Auto-scale serverless functions based on traffic.  
-  - **Cost-Effectiveness**: Pay-per-use model means low cost for small projects.
+### Production Environment
+- **Container Orchestration**: AWS ECS (Fargate) or Kubernetes (EKS)
+- **Database**: AWS RDS for PostgreSQL (managed backups, high availability)
+- **Load Balancing**: AWS Application Load Balancer in front of Flask containers
+- **DNS & SSL**: AWS Route 53 and ACM for managed SSL certificates
+
+**Benefits**: high availability, automated scaling, pay-as-you-go, managed security updates.
 
 ## 6. Infrastructure Components
 
-- **Load Balancer**
-  - Provided by the hosting platform—distributes API requests across function instances.
-
-- **CDN (Content Delivery Network)**
-  - Vercel’s global edge network caches static assets (CSS, JS, images) for faster page loads.
-
-- **Caching**
-  - **Redis** (optional) for session storage or caching dashboard queries to reduce database load.
-
-- **Object Storage**
-  - For file uploads or backups, integrate with AWS S3 or similar services.
-
-- **Message Queue**
-  - In future, use **RabbitMQ** or **Kafka** for background tasks (e.g., email notifications).
+- **Load Balancer** (ALB or Nginx): Distributes incoming API traffic across multiple Flask instances.
+- **WSGI Server** (Gunicorn): Manages worker processes for handling concurrent requests.
+- **Proxy/SSL Termination** (Nginx): Handles TLS, static file serving (if needed), and request routing.
+- **Caching** (Redis):
+  - Session storage (optional)
+  - Caching frequently fetched data (e.g., symptom list)
+- **CDN** (e.g., AWS CloudFront): Delivers static assets (icons, docs) with low latency.
+- **Logging & Centralized Storage**: CloudWatch Logs or ELK stack for aggregated, searchable logs.
 
 ## 7. Security Measures
 
-- **Authentication & Authorization**
-  - Passwords hashed with **bcrypt** and salted.  
-  - Session tokens stored in secure, HttpOnly cookies or Authorization headers.  
-  - Protected endpoints verify tokens before proceeding.
-
-- **Data Encryption**
-  - **HTTPS/TLS** encrypts data in transit.  
-  - Database connections use SSL to encrypt data between the app and the database.
-
-- **Input Validation**
-  - Every incoming request is validated (e.g., valid email format, password length) to prevent SQL injection or other attacks.
-
-- **Web Security Best Practices**
-  - Enable **CORS** policies to limit allowed origins.  
-  - Use **CSRF tokens** or same-site cookies to prevent cross-site requests.  
-  - Set secure headers with **Helmet** or a similar middleware.
+- **Transport Security**: TLS (HTTPS) for all in-transit data.
+- **Authentication & Authorization**:
+  - OAuth2 with Google for user login
+  - Session cookies (secure, HttpOnly) or JWTs for API calls
+  - Role-based access control (regular user vs. admin)
+- **Input Validation**: Strict schema checks with Marshmallow or Pydantic.
+- **Rate Limiting**: Flask-Limiter to protect against brute-force and denial-of-service.
+- **Secret Management**: Environment variables stored in AWS Secrets Manager (DB credentials, OAuth keys, OpenAI API keys).
+- **Data Encryption**: AES-256 at rest for RDS, Redis encryption if supported.
+- **Compliance**: GDPR-friendly design (data retention policy, right to delete).
 
 ## 8. Monitoring and Maintenance
 
-- **Performance Monitoring**
-  - Integrate **Sentry** or **LogRocket** for real-time crash reporting and performance tracing.  
-  - Use Vercel’s built-in analytics to track request latencies and error rates.
-
-- **Logging**
-  - Structured logs (JSON) for all API requests and errors, shipped to a log management service like **Datadog** or **Logflare**.
-
-- **Health Checks**
-  - Define a `/health` endpoint that returns a 200 status if the service is up and the database is reachable.
-
-- **Maintenance Strategies**
-  - Automated migrations run on deploy to keep the database schema up to date.  
-  - Scheduled dependency audits and security scans (e.g., `npm audit`).
-  - Regular backups of the database (daily or weekly depending on usage).
+- **Performance Monitoring**: Prometheus + Grafana or AWS CloudWatch metrics (CPU, memory, request latency).
+- **Application Tracing**: OpenTelemetry or DataDog APM for end-to-end request traces.
+- **Alerting**: CPU/RAM thresholds, error-rate spikes sent to Slack/SMS via SNS or PagerDuty.
+- **Automated Backups**: Daily RDS snapshots, weekly full dumps of JSON history archives.
+- **Health Checks**: ECS health checks pings `/api/v1/health` endpoint to restart unhealthy containers.
+- **Database Migrations**: Automated via Alembic in CI/CD pipeline before new container deploy.
 
 ## 9. Conclusion and Overall Backend Summary
 
-The backend for **codeguide-starter** is built on Next.js API Routes and Node.js, paired with PostgreSQL for data and optional Redis for caching. It follows a clear layered architecture that keeps code easy to maintain and extend. With RESTful endpoints for authentication and data, secure practices like password hashing and HTTPS, and hosting on Vercel for scalability and global performance, this setup meets the project’s goals for a fast, secure, and developer-friendly foundation. Future enhancements—such as background job queues, advanced monitoring, or richer data models—can be added without disrupting the core structure.
+The backend for the Padi Diagnosis Expert System is a modular, containerized Flask application backed by PostgreSQL. It cleanly separates API routes, business logic, and data models, making it easy to extend with new diseases or reasoning rules. By combining Forward Chaining, Certainty Factor calculations, and AI-driven treatment generation, it meets the project’s goal of delivering accurate, actionable diagnoses. Deployed in a modern cloud environment using Docker, ECS, and managed databases, it ensures reliability, scalability, and efficient maintenance for both developers and end users.

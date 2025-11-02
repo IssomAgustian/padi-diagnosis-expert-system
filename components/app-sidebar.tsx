@@ -19,6 +19,9 @@ import {
   IconSearch,
   IconSettings,
   IconUsers,
+  IconMicroscope,
+  IconHistory,
+  IconPlant,
 } from "@tabler/icons-react"
 
 import { NavDocuments } from "@/components/nav-documents"
@@ -39,28 +42,18 @@ const staticData = {
   navMain: [
     {
       title: "Dashboard",
-      url: "#",
+      url: "/dashboard",
       icon: IconDashboard,
     },
     {
-      title: "Lifecycle",
-      url: "#",
-      icon: IconListDetails,
+      title: "Rice Diagnosis",
+      url: "/dashboard/diagnosis",
+      icon: IconMicroscope,
     },
     {
-      title: "Analytics",
-      url: "#",
-      icon: IconChartBar,
-    },
-    {
-      title: "Projects",
-      url: "#",
-      icon: IconFolder,
-    },
-    {
-      title: "Team",
-      url: "#",
-      icon: IconUsers,
+      title: "History",
+      url: "/dashboard/history",
+      icon: IconHistory,
     },
   ],
   navClouds: [
@@ -170,8 +163,8 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
               className="data-[slot=sidebar-menu-button]:!p-1.5"
             >
               <Link href="/">
-                <Image src="/codeguide-logo.png" alt="CodeGuide" width={32} height={32} className="rounded-lg" />
-                <span className="text-base font-semibold font-parkinsans">CodeGuide</span>
+                <Image src="/codeguide-logo.png" alt="Padi Diagnosis" width={32} height={32} className="rounded-lg" />
+                <span className="text-base font-semibold font-parkinsans">Padi Diagnosis</span>
               </Link>
             </SidebarMenuButton>
           </SidebarMenuItem>

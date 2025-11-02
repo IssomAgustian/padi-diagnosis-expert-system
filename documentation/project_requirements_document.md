@@ -1,117 +1,85 @@
-# Project Requirements Document: codeguide-starter
-
----
+# Project Requirements Document (PRD)
 
 ## 1. Project Overview
 
-The **codeguide-starter** project is a boilerplate web application that provides a ready-made foundation for any web project requiring secure user authentication and a post-login dashboard. It sets up the common building blocks—sign-up and sign-in pages, API routes to handle registration and login, and a simple dashboard interface driven by static data. By delivering this skeleton, it accelerates development time and ensures best practices are in place from day one.
+This project, named **padi-diagnosis-expert-system**, is a web-based expert system designed to help farmers and agronomists accurately diagnose rice plant diseases. It combines a **hybrid reasoning engine**—using forward chaining for deterministic rule matching and certainty factor calculations for probabilistic assessment—with a **modern, responsive frontend** built on Next.js. Once a disease is identified, it leverages a generative AI service (OpenAI/Gemini) to produce detailed, step-by-step treatment plans and medicine recommendations.
 
-This starter kit is being built to solve the friction developers face when setting up repeated common tasks: credential handling, session management, page routing, and theming. Key objectives include: 1) delivering a fully working authentication flow (registration & login), 2) providing a gated dashboard area upon successful login, 3) establishing a clear, maintainable project structure using Next.js and TypeScript, and 4) demonstrating a clean theming approach with global and section-specific CSS. Success is measured by having an end-to-end login journey in under 200 lines of code and zero runtime type errors.
-
----
+We’re building this to streamline the disease diagnosis process, reduce guesswork in the field, and provide actionable guidance in real time. Key success criteria include: 1) delivering accurate diagnoses (measured by expert validation), 2) a seamless user experience (page load times under 2 seconds, intuitive UI), and 3) reliable generative AI content (treatment plans rated “useful” by >80% of users). A solid developer experience—powered by Docker, TypeScript, and clear code organization—will ensure rapid feature additions and long-term maintainability.
 
 ## 2. In-Scope vs. Out-of-Scope
 
-### In-Scope (Version 1)
-- User registration (sign-up) form with validation
-- User login (sign-in) form with validation
-- Next.js API routes under `/api/auth/route.ts` handling:
-  - Credential validation
-  - Password hashing (e.g., bcrypt)
-  - Session creation or JWT issuance
-- Protected dashboard pages under `/dashboard`:
-  - `layout.tsx` wrapping dashboard content
-  - `page.tsx` rendering static data from `data.json`
-- Global application layout in `/app/layout.tsx`
-- Basic styling via `globals.css` and `dashboard/theme.css`
-- TypeScript strict mode enabled
+In-Scope (Version 1):
+- User registration and login via **Google OAuth**.  
+- Protected routes: `/dashboard/diagnosis` and `/dashboard/history`.  
+- Symptom selection interface with checkbox components.  
+- Two-phase diagnostic engine: forward chaining + certainty factor UI.  
+- Generative AI integration for treatment recommendations.  
+- Diagnosis history page with pagination (last 30 days).  
+- Print-to-PDF functionality for individual reports.  
+- Backend implemented in Flask (Python) with SQLAlchemy + PostgreSQL.  
+- Frontend built with Next.js, TypeScript, Tailwind CSS, and shadcn/ui.  
+- Docker Compose setup covering frontend, backend, and database.  
 
-### Out-of-Scope (Later Phases)
-- Integration with a real database (PostgreSQL, MongoDB, etc.)
-- Advanced authentication flows (password reset, email verification, MFA)
-- Role-based access control (RBAC)
-- Multi-tenant or white-label theming
-- Unit, integration, or end-to-end testing suites
-- CI/CD pipeline and production deployment scripts
-
----
+Out-of-Scope (Later Phases):
+- Admin dashboard for managing rules or training data.  
+- Mobile-native apps (iOS/Android).  
+- Offline/edge functionality.  
+- Multi-language support beyond English.  
+- User role management beyond basic authentication.  
+- Third-party analytics or A/B testing integrations.  
 
 ## 3. User Flow
 
-A new visitor lands on the root URL and sees a welcome page with options to **Sign Up** or **Sign In**. If they choose Sign Up, they fill in their email, password, and hit “Create Account.” The form submits to `/api/auth/route.ts`, which hashes the password, creates a new user session or token, and redirects them to the dashboard. If any input is invalid, an inline error message explains the issue (e.g., “Password too short”).
+A new user lands on the public homepage and clicks **"Sign In with Google."** After completing the OAuth flow, they’re redirected to the `/dashboard` landing page. From there, they select **“Diagnose Now,”** which takes them to a symptom-selection form. The form lists all known rice-plant symptoms as checkboxes. The user picks applicable symptoms and clicks **“Diagnose.”**
 
-Once authenticated, the user is taken to the `/dashboard` route. Here they see a sidebar or header defined by `dashboard/layout.tsx`, and the main panel pulls in static data from `data.json`. They can log out (if that control is present), but otherwise their entire session is managed by server-side cookies or tokens. Returning users go directly to Sign In, submit credentials, and upon success they land back on `/dashboard`. Any unauthorized access to `/dashboard` redirects back to Sign In.
-
----
+Behind the scenes, the frontend sends the selected symptom IDs to the Flask backend (`POST /api/diagnose`). If a rule exactly matches, the system returns a complete diagnosis immediately. Otherwise, the user sees sliders next to each symptom asking for certainty levels (0–100%). After the user adjusts and submits certainty factors (`POST /api/calculate_certainty`), the final diagnosis is returned. The UI displays the disease name, explanation, and a **“View Treatment Plan”** button that fetches AI-generated recommendations. Users can then **print to PDF** or **save** the case. They may also navigate to **“History”** to see past 30-day records.
 
 ## 4. Core Features
 
-- **Sign-Up Page (`/app/sign-up/page.tsx`)**: Form fields for email & password, client-side validation, POST to `/api/auth`.
-- **Sign-In Page (`/app/sign-in/page.tsx`)**: Form fields for email & password, client-side validation, POST to `/api/auth`.
-- **Authentication API (`/app/api/auth/route.ts`)**: Handles both registration and login based on HTTP method, integrates password hashing (bcrypt) and session or JWT logic.
-- **Global Layout (`/app/layout.tsx` + `globals.css`)**: Shared header, footer, and CSS resets across all pages.
-- **Dashboard Layout (`/app/dashboard/layout.tsx` + `dashboard/theme.css`)**: Sidebar or top nav for authenticated flows, section-specific styling.
-- **Dashboard Page (`/app/dashboard/page.tsx`)**: Reads `data.json`, renders it as cards or tables.
-- **Static Data Source (`/app/dashboard/data.json`)**: Example dataset to demo dynamic rendering.
-- **TypeScript Configuration**: `tsconfig.json` with strict mode and path aliases (if any).
-
----
+- **Authentication & Access Control**: Secure Google OAuth sign-in, session management, and protected route guards.  
+- **Symptom Selection UI**: Dynamic checkbox list for symptoms, responsive layout using shadcn/ui.  
+- **Forward Chaining Engine**: Rule-based matching on the backend to identify diseases with absolute certainty.  
+- **Certainty Factor Workflow**: Conditional UI to collect user confidence levels and calculate probabilistic scores.  
+- **Generative AI Integration**: Flask service calls OpenAI/Gemini to generate detailed treatment steps and medicine advice.  
+- **Diagnosis History**: Paginated table of past diagnoses (30-day window), with symptom, CF values, and result.  
+- **Print-to-PDF**: Client-side PDF generation for individual reports (using `react-to-print` or equivalent).  
+- **Dockerized Environment**: Single `docker-compose.yml` to orchestrate Next.js, Flask, and PostgreSQL.  
 
 ## 5. Tech Stack & Tools
 
-- **Framework**: Next.js (App Router) for file-based routing, SSR/SSG, and API routes.
-- **Language**: TypeScript for type safety.
-- **UI Library**: React 18 for component-based UI.
-- **Styling**: Plain CSS via `globals.css` (global reset) and `theme.css` (sectional styling). Can easily migrate to CSS Modules or Tailwind in the future.
-- **Backend**: Node.js runtime provided by Next.js API routes.
-- **Password Hashing**: bcrypt (npm package).
-- **Session/JWT**: NextAuth.js or custom JWT logic (to be decided in implementation).
-- **IDE & Dev Tools**: VS Code with ESLint, Prettier extensions. Optionally, Cursor.ai for AI-assisted coding.
-
----
+- Frontend: Next.js (App Router), React 19, TypeScript, Tailwind CSS, shadcn/ui components.  
+- Backend: Flask (Python 3.10+), SQLAlchemy ORM, PostgreSQL database.  
+- AI/ML: OpenAI API (GPT-4/GPT-4o) or Google Gemini via HTTP.  
+- Containerization: Docker & Docker Compose.  
+- State Management (optional): Zustand or Jotai for multi-step flow.  
+- Testing: Playwright or Cypress for end-to-end tests.  
+- IDE & Plugins: VS Code with Docker, Python, and TypeScript extensions; Cursor for AI-assisted coding (optional).  
 
 ## 6. Non-Functional Requirements
 
-- **Performance**: Initial page load under 200 ms on a standard broadband connection. API responses under 300 ms.
-- **Security**:
-  - HTTPS only in production.
-  - Proper CORS, CSRF protection for API routes.
-  - Secure password storage (bcrypt with salt).
-  - No credentials or secrets checked into version control.
-- **Scalability**: Structure must support adding database integration, caching layers, and advanced auth flows without rewiring core app.
-- **Usability**: Forms should give real-time feedback on invalid input. Layout must be responsive (mobile > 320 px).
-- **Maintainability**: Code must adhere to TypeScript strict mode. Linting & formatting enforced by ESLint/Prettier.
-
----
+- **Performance**: Page loads under 2 seconds. API responses under 1 second for primary endpoints. CF calculation under 500 ms.  
+- **Security**: HTTPS everywhere, strict Content Security Policy, input validation & sanitization, CSRF protection on forms, token-based session handling.  
+- **Compliance**: 30-day data retention for history, optional user data deletion on request (GDPR-friendly).  
+- **Usability**: WCAG AA accessibility compliance, responsive design for desktop & tablet, clear error/success messages.  
+- **Scalability**: Stateless frontend & backend, horizontal scaling via Docker containers or Kubernetes if needed.  
 
 ## 7. Constraints & Assumptions
 
-- **No Database**: Dashboard uses only `data.json`; real database integration is deferred.
-- **Node Version**: Requires Node.js >= 14.
-- **Next.js Version**: Built on Next.js 13+ App Router.
-- **Authentication**: Assumes availability of bcrypt or NextAuth.js at implementation time.
-- **Hosting**: Targets serverless or Node.js-capable hosting (e.g., Vercel, Netlify).
-- **Browser Support**: Modern evergreen browsers; no IE11 support required.
-
----
+- The OpenAI/Gemini API key is available and rate limits (e.g., 60 RPM) must be respected.  
+- Users have modern browsers (Chrome, Firefox, Safari) with JavaScript enabled.  
+- PostgreSQL service is reachable via Docker network.  
+- Flask backend will run on a known base URL (e.g., `http://localhost:5000`).  
+- We assume 30-day history retention; deletion logic runs nightly.  
 
 ## 8. Known Issues & Potential Pitfalls
 
-- **Static Data Limitation**: `data.json` is only for demo. A real API or database will be needed to avoid stale data.
-  *Mitigation*: Define a clear interface for data fetching so swapping to a live endpoint is trivial.
-
-- **Global CSS Conflicts**: Using global styles can lead to unintended overrides.
-  *Mitigation*: Plan to migrate to CSS Modules or utility-first CSS in Phase 2.
-
-- **API Route Ambiguity**: Single `/api/auth/route.ts` handling both sign-up and sign-in could get complex.
-  *Mitigation*: Clearly branch on HTTP method (`POST /register` vs. `POST /login`) or split into separate files.
-
-- **Lack of Testing**: No test suite means regressions can slip in.
-  *Mitigation*: Build a minimal Jest + React Testing Library setup in an early iteration.
-
-- **Error Handling Gaps**: Client and server must handle edge cases (network failures, malformed input).
-  *Mitigation*: Define a standard error response schema and show user-friendly messages.
+- **AI Rate Limits & Costs**: Hitting API limits could delay treatment plan generation. Mitigation: cache AI responses, implement exponential backoff.  
+- **Generative AI Variability**: Responses may vary in quality. Mitigation: enforce prompt templates, post-process for consistency.  
+- **Certainty Factor Rounding**: Floating-point errors can skew results. Mitigation: use decimal libraries or consistent rounding rules.  
+- **Cross-Origin Calls**: Frontend–backend CORS must be configured correctly.  
+- **Large Symptom Lists**: Very long checkbox lists could hurt performance. Mitigation: lazy load or paginate symptom sections.  
+- **PDF Rendering Quirks**: Different browsers handle CSS for print differently. Mitigation: test in major browsers, use print-specific styles.
 
 ---
 
-This PRD should serve as the single source of truth for the AI model or any developer generating the next set of technical documents: Tech Stack Doc, Frontend Guidelines, Backend Structure, App Flow, File Structure, and IDE Rules. It contains all functional and non-functional requirements with no ambiguity, enabling seamless downstream development.
+This PRD serves as the single source of truth for building the padi-diagnosis-expert-system. With these details in place, the subsequent Tech Stack, Frontend Guidelines, Backend Structure, and other documents can be drafted unambiguously.

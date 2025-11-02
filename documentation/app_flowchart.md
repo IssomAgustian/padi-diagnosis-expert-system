@@ -1,14 +1,21 @@
 flowchart TD
-  Start[Landing Page]
-  SignUpPage[Sign Up Page]
-  SignInPage[Sign In Page]
-  AuthAPI[Authentication API Endpoint]
-  DashboardPage[Dashboard Page]
-  Start -->|Select Sign Up| SignUpPage
-  Start -->|Select Sign In| SignInPage
-  SignUpPage -->|Submit Credentials| AuthAPI
-  SignInPage -->|Submit Credentials| AuthAPI
-  AuthAPI -->|Success| DashboardPage
-  AuthAPI -->|Error| SignUpPage
-  AuthAPI -->|Error| SignInPage
-  DashboardPage -->|Click Logout| Start
+    A[Landing Page] --> B[Sign In Page]
+    B --> C{Is Authenticated?}
+    C -->|No| B
+    C -->|Yes| D[Dashboard]
+    D --> E[Diagnosis Page]
+    D --> F[History Page]
+    E --> G[Fetch Symptoms]
+    G --> H[Select Symptoms]
+    H --> I{Match Rule}
+    I -->|Yes| J[Show Diagnosis Result]
+    I -->|No| K[Ask Certainty Factors]
+    K --> L[Submit Certainty Factors]
+    L --> M[Calculate Final Diagnosis]
+    M --> J
+    J --> N[Print to PDF]
+    J --> O[Save to History]
+    J --> P[Diagnose Again]
+    F --> Q[Fetch History]
+    Q --> R[Show Paginated History]
+    R --> P
