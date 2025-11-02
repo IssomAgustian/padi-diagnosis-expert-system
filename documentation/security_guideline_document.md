@@ -1,116 +1,150 @@
-# Security Guidelines for codeguide-starter
+# padi-diagnosis-expert-system Security Guidelines
 
-This document defines mandatory security principles and implementation best practices tailored to the **codeguide-starter** repository. It aligns with Security-by-Design, Least Privilege, Defense-in-Depth, and other core security tenets. All sections reference specific areas of the codebase (e.g., `/app/api/auth/route.ts`, CSS files, environment configuration) to ensure practical guidance.
+This document defines security best practices tailored to the `padi-diagnosis-expert-system`, a hybrid Next.js frontend and Flask backend application for diagnosing rice plant diseases. It aligns with industry‐standard principles to ensure confidentiality, integrity, and availability throughout the system lifecycle.
 
 ---
 
-## 1. Security by Design
-
-• Embed security from day one: review threat models whenever adding new features (e.g., new API routes, data fetching).
-• Apply “secure defaults” in Next.js configuration (`next.config.js`), enabling strict mode and disabling debug flags in production builds.
-• Maintain a security checklist in your PR template to confirm that each change has been reviewed against this guideline.
+## 1. Security Principles by Design
+- **Security by Design**: Integrate security reviews at each sprint—design, development, testing, and deployment.  
+- **Least Privilege**: Grant minimal access rights to users, services, and database roles.  
+- **Defense in Depth**: Combine network, host, and application controls so a single failure is not a system compromise.  
+- **Fail Securely**: Default to denial for any error or exception; do not leak stack traces or sensitive data.  
+- **Secure Defaults**: Ensure production builds disable debug features, verbose logging, and development-only endpoints.
 
 ---
 
 ## 2. Authentication & Access Control
 
-### 2.1 Password Storage
-- Use **bcrypt** (or Argon2) with a per-user salt to hash passwords in `/app/api/auth/route.ts`.
-- Enforce a strong password policy on both client and server: minimum 12 characters, mixed case, numbers, and symbols.
+### 2.1 Google OAuth Integration
+- Use OAuth 2.0 Authorization Code flow with PKCE for Google sign-in.  
+- Validate and verify ID tokens server-side using Google’s public keys.  
+- Implement strict redirect URI allow-listing.
 
 ### 2.2 Session Management
-- Issue sessions via Secure, HttpOnly, SameSite=strict cookies. Do **not** expose tokens to JavaScript.
-- Implement absolute and idle timeouts. For example, invalidate sessions after 30 minutes of inactivity.
-- Protect against session fixation by regenerating session IDs after authentication.
+- Use HTTP-only, Secure, SameSite=strict cookies to store session identifiers.  
+- Rotate session identifiers on privilege changes and at regular intervals.  
+- Enforce idle timeout (e.g., 30 minutes) and absolute expiration (e.g., 24 hours).  
+- Provide explicit logout endpoint (`POST /api/auth/logout`) to invalidate server-side sessions.
 
-### 2.3 Brute-Force & Rate Limiting
-- Apply rate limiting at the API layer (e.g., using `express-rate-limit` or Next.js middleware) on `/api/auth` to throttle repeated login attempts.
-- Introduce exponential backoff or temporary lockout after N failed attempts.
-
-### 2.4 Role-Based Access Control (Future)
-- Define user roles in your database model (e.g., `role = 'user' | 'admin'`).
-- Enforce server-side authorization checks in every protected route (e.g., in `dashboard/layout.tsx` loader functions).
+### 2.3 Role-Based Access Control (RBAC)
+- Define roles (e.g., `user`, `admin`) and enforce server-side checks for every protected route.  
+- On the Flask side, decorate endpoints with role checks and abort unauthorized requests (HTTP 403).
 
 ---
 
-## 3. Input Handling & Processing
+## 3. Input Validation & Output Encoding
 
-### 3.1 Validate & Sanitize All Inputs
-- On **client** (`sign-up/page.tsx`, `sign-in/page.tsx`): perform basic format checks (email regex, password length).
-- On **server** (`/app/api/auth/route.ts`): re-validate inputs with a schema validator (e.g., `zod`, `Joi`).
-- Reject or sanitize any unexpected fields to prevent injection attacks.
+### 3.1 Frontend & API Input Validation
+- Treat all client input as untrusted.  
+- On Next.js, use Zod or Yup to validate request payloads before sending to the backend.  
+- On Flask, validate JSON bodies with Marshmallow or Pydantic.  
+- Enforce allow-lists for enum fields (e.g., symptom IDs, certainty factor ranges).
 
-### 3.2 Prevent Injection
-- If you introduce a database later, always use parameterized queries or an ORM (e.g., Prisma) rather than string concatenation.
-- Avoid dynamic `eval()` or template rendering with unsanitized user input.
+### 3.2 Prevent Injection Attacks
+- Use parameterized queries via SQLAlchemy ORM—never concatenate SQL strings.  
+- Sanitize any user‐provided text used in templates.  
+- Apply context-aware encoding when rendering values in React (React escapes by default).
 
-### 3.3 Safe Redirects
-- When redirecting after login or logout, validate the target against an allow-list to prevent open redirects.
+### 3.3 File Handling
+- If generating or accepting PDF reports, ensure no user‐controlled content is executed.  
+- Store temporary files in a protected directory outside the webroot with restrictive permissions.
 
 ---
 
 ## 4. Data Protection & Privacy
 
-### 4.1 Encryption & Secrets
-- Enforce HTTPS/TLS 1.2+ for all front-end ↔ back-end communications.
-- Never commit secrets—use environment variables and a secrets manager (e.g., AWS Secrets Manager, Vault).
+### 4.1 Transport Encryption
+- Enforce HTTPS/TLS 1.2+ for all frontend↔backend and backend↔external-AI calls.  
+- HSTS header with `max-age=63072000; includeSubDomains; preload`.
 
-### 4.2 Sensitive Data Handling
-- Do ​not​ log raw passwords, tokens, or PII in server logs. Mask or redact any user identifiers.
-- If storing PII in `data.json` or a future database, classify it and apply data retention policies.
+### 4.2 At-Rest Encryption
+- Enable PostgreSQL Transparent Data Encryption (TDE) or disk-level encryption.  
+- Encrypt any fallback backups or snapshots stored offsite.
+
+### 4.3 Secret Management
+- Do **NOT** commit secrets or API keys to source control.  
+- Store secrets in AWS Secrets Manager, HashiCorp Vault, or similar.  
+- Inject secrets into containers at runtime via environment variables or secret volumes.
+
+### 4.4 Sensitive Data Handling
+- Mask or redact PII (e.g., user emails) in logs.  
+- Retain diagnosis history only for the configured period (e.g., 30 days), then purge.
 
 ---
 
 ## 5. API & Service Security
 
-### 5.1 HTTPS Enforcement
-- In production, redirect all HTTP traffic to HTTPS (e.g., via Vercel’s redirect rules or custom middleware).
+### 5.1 CORS & CSRF
+- Configure CORS to allow only trusted origins (`https://example.com`).  
+- Enable CSRF tokens in Next.js for state-changing POST/PUT/DELETE calls.
 
-### 5.2 CORS
-- Configure `next.config.js` or API middleware to allow **only** your front-end origin (e.g., `https://your-domain.com`).
+### 5.2 Rate Limiting & Throttling
+- Implement rate limiting (e.g., 100 req/min per IP) on both Next.js API routes and Flask endpoints to mitigate brute-force and DoS attempts.
 
-### 5.3 API Versioning & Minimal Exposure
-- Version your API routes (e.g., `/api/v1/auth`) to handle future changes without breaking clients.
-- Return only necessary fields in JSON responses; avoid leaking internal server paths or stack traces.
+### 5.3 API Versioning & Contract
+- Prefix API routes with `/v1/` and document them with OpenAPI/Swagger.  
+- Use strict request/response schemas and reject unknown fields.
+
+### 5.4 Least Privileged Service Accounts
+- The Flask service account should connect to PostgreSQL with only the necessary roles (e.g., read/write on `symptoms`, `diagnoses`, but no `DROP` privileges).
 
 ---
 
 ## 6. Web Application Security Hygiene
 
-### 6.1 CSRF Protection
-- Use anti-CSRF tokens for any state-changing API calls. Integrate Next.js CSRF middleware or implement synchronizer tokens stored in cookies.
+### 6.1 Security Headers
+- **Content-Security-Policy**: restrict scripts/styles to your CDN and self.  
+- **X-Frame-Options**: `DENY` to prevent clickjacking.  
+- **X-Content-Type-Options**: `nosniff`.  
+- **Referrer-Policy**: `strict-origin-when-cross-origin`.
 
-### 6.2 Security Headers
-- In `next.config.js` (or a custom server), add these headers:
-  - `Strict-Transport-Security: max-age=63072000; includeSubDomains; preload`
-  - `X-Content-Type-Options: nosniff`
-  - `X-Frame-Options: DENY`
-  - `Referrer-Policy: no-referrer-when-downgrade`
-  - `Content-Security-Policy`: restrict script/style/src to self and trusted CDNs.
+### 6.2 Secure Cookies
+- Set `HttpOnly; Secure; SameSite=Strict` on all authentication cookies.
 
-### 6.3 Secure Cookies
-- Set `Secure`, `HttpOnly`, `SameSite=Strict` on all cookies. Avoid storing sensitive data in `localStorage`.
-
-### 6.4 Prevent XSS
-- Escape or encode all user-supplied data in React templates. Avoid `dangerouslySetInnerHTML` unless content is sanitized.
+### 6.3 Subresource Integrity
+- Use SRI attributes for any third-party CDN assets in the Next.js `_document.js`.
 
 ---
 
-## 7. Infrastructure & Configuration Management
+## 7. Infrastructure & Configuration
 
-- Harden your hosting environment (e.g., Vercel/Netlify) by disabling unnecessary endpoints (GraphQL/GraphiQL playgrounds in production).
-- Rotate secrets and API keys regularly via your secrets manager.
-- Maintain minimal privileges: e.g., database accounts should only have read/write on required tables.
-- Keep Node.js, Next.js, and all system packages up to date.
+### 7.1 Docker & Deployment
+- Build multi-stage Docker images to separate build and runtime.  
+- Avoid SSH or root access in production containers.  
+- Run containers with nonroot user IDs.
+
+### 7.2 Network Segmentation
+- Place the database in a private network segment.  
+- Expose only necessary ports (e.g., 443 for the web, 5432 only to the backend).  
+- Use security groups/firewall rules to restrict access.
+
+### 7.3 Secrets & Environment
+- Store Flask and Next.js environment variables in encrypted parameter stores, not in code.  
+- Use dotenv only for local development; never in production.
+
+### 7.4 Patching & Hardening
+- Regularly update Node.js, Python, OS packages, and libraries.  
+- Use CIS-benchmarked base images.  
+- Disable debug and verbose stack traces in production builds.
 
 ---
 
 ## 8. Dependency Management
 
-- Commit and maintain `package-lock.json` to guarantee reproducible builds.
-- Integrate a vulnerability scanner (e.g., GitHub Dependabot, Snyk) to monitor and alert on CVEs in dependencies.
-- Trim unused packages; each added library increases the attack surface.
+- Maintain lockfiles (`package-lock.json`, `Pipfile.lock`).  
+- Perform automated SCA scans (e.g., Dependabot, Snyk) on each pull request.  
+- Review advisories for transitive dependencies.
+- Remove unused packages to minimize attack surface.
 
 ---
 
-Adherence to these guidelines will ensure that **codeguide-starter** remains secure, maintainable, and resilient as it evolves. Regularly review and update this document to reflect new threats and best practices.
+## 9. Monitoring, Logging & Incident Response
+
+- Centralize logs with a secure logging service (e.g., ELK stack, CloudWatch).  
+- Mask sensitive fields in logs.  
+- Alert on anomalous behavior (e.g., repeated failed logins, excessive rate limiting hits).  
+- Define and document an incident response plan, including roles, escalation, and communication.
+
+---
+
+**Adhering to these guidelines will help ensure the `padi-diagnosis-expert-system` remains secure, resilient, and maintainable as it evolves.**
